@@ -593,25 +593,13 @@ class HistoryStorage:
         self.data_file = os.path.join(data_dir, 'network_history.json')
         self._ensure_file_exists()
 
-        # State tracking for intelligent saving
+        # State tracking
         self._last_saved_metrics = None
-        self._last_save_time = None
-        self._pending_records = []  # Buffer for batch writing
+        self._last_regular_save_time = None
         self._write_lock = threading.Lock()
 
-        # Thresholds for detecting significant changes
-        self.change_thresholds = {
-            'ping_ms': 20,           # 20ms change triggers save
-            'jitter_ms': 10,         # 10ms jitter change
-            'packet_loss_percent': 1, # Any packet loss triggers save
-            'signal_percent': 10,    # 10% signal change
-            'quality_score': 10,     # 10 point quality change
-        }
-
-        # Minimum interval between regular saves (seconds)
-        self.min_save_interval = 30
-        # Maximum interval - force save even if nothing changed (seconds)
-        self.max_save_interval = 60
+        # Regular save interval (seconds) - for continuous chart data
+        self.regular_save_interval = 5
 
     def _ensure_file_exists(self):
         """Create the data file if it doesn't exist"""
@@ -619,71 +607,69 @@ class HistoryStorage:
             with open(self.data_file, 'w', encoding='utf-8') as f:
                 json.dump({'records': []}, f)
 
-    def should_save(self, metrics: NetworkMetrics) -> tuple:
+    def detect_critical_event(self, metrics: NetworkMetrics) -> str:
         """
-        Intelligently determine if we should save this metrics snapshot.
-        Returns (should_save: bool, reason: str)
+        Check if this is a critical event that should be saved immediately.
+        Returns event type or None.
+        """
+        if self._last_saved_metrics is None:
+            return None
+
+        # Disconnection/Reconnection
+        if not metrics.is_connected and self._last_saved_metrics.is_connected:
+            return "disconnected"
+        if metrics.is_connected and not self._last_saved_metrics.is_connected:
+            return "reconnected"
+
+        # Packet loss start/end
+        if metrics.packet_loss_percent > 0 and self._last_saved_metrics.packet_loss_percent == 0:
+            return "packet_loss_start"
+        if metrics.packet_loss_percent == 0 and self._last_saved_metrics.packet_loss_percent > 0:
+            return "packet_loss_end"
+
+        # Ping timeout
+        if metrics.ping_ms is None and self._last_saved_metrics.ping_ms is not None:
+            return "ping_timeout"
+        if metrics.ping_ms is not None and self._last_saved_metrics.ping_ms is None:
+            return "ping_recovered"
+
+        # High packet loss (>5%)
+        if metrics.packet_loss_percent >= 5:
+            return "high_packet_loss"
+
+        # Ping spike >100ms
+        if metrics.ping_ms and metrics.ping_ms > 100:
+            if self._last_saved_metrics.ping_ms and self._last_saved_metrics.ping_ms <= 100:
+                return "ping_spike"
+
+        return None
+
+    def save_metrics(self, metrics: NetworkMetrics):
+        """
+        Save metrics to history.
+        - Always saves on critical events (immediately)
+        - Regular saves every X seconds for continuous data
         """
         now = datetime.now()
+        reason = "regular"
 
-        # Always save the first record
-        if self._last_saved_metrics is None:
-            return True, "initial"
+        # Check for critical events first
+        critical_event = self.detect_critical_event(metrics)
+        if critical_event:
+            reason = critical_event
 
-        # Check for disconnection or reconnection
-        if not metrics.is_connected and self._last_saved_metrics.is_connected:
-            return True, "disconnected"
-        if metrics.is_connected and not self._last_saved_metrics.is_connected:
-            return True, "reconnected"
+        # Check if it's time for regular save
+        is_regular_save_time = False
+        if self._last_regular_save_time is None:
+            is_regular_save_time = True
+            reason = "initial"
+        else:
+            elapsed = (now - self._last_regular_save_time).total_seconds()
+            if elapsed >= self.regular_save_interval:
+                is_regular_save_time = True
 
-        # Check for packet loss (critical event!)
-        if metrics.packet_loss_percent > 0 and self._last_saved_metrics.packet_loss_percent == 0:
-            return True, "packet_loss_start"
-        if metrics.packet_loss_percent == 0 and self._last_saved_metrics.packet_loss_percent > 0:
-            return True, "packet_loss_end"
-
-        # Check for significant ping spike
-        if metrics.ping_ms and self._last_saved_metrics.ping_ms:
-            ping_diff = abs(metrics.ping_ms - self._last_saved_metrics.ping_ms)
-            if ping_diff >= self.change_thresholds['ping_ms']:
-                return True, f"ping_change_{ping_diff:.0f}ms"
-
-        # Check for ping timeout (None means timeout)
-        if metrics.ping_ms is None and self._last_saved_metrics.ping_ms is not None:
-            return True, "ping_timeout"
-        if metrics.ping_ms is not None and self._last_saved_metrics.ping_ms is None:
-            return True, "ping_recovered"
-
-        # Check for jitter spike
-        if metrics.jitter_ms and self._last_saved_metrics.jitter_ms:
-            jitter_diff = abs(metrics.jitter_ms - self._last_saved_metrics.jitter_ms)
-            if jitter_diff >= self.change_thresholds['jitter_ms']:
-                return True, f"jitter_change_{jitter_diff:.1f}ms"
-
-        # Check for signal drop
-        if metrics.signal_percent and self._last_saved_metrics.signal_percent:
-            signal_diff = abs(metrics.signal_percent - self._last_saved_metrics.signal_percent)
-            if signal_diff >= self.change_thresholds['signal_percent']:
-                return True, f"signal_change_{signal_diff}%"
-
-        # Check for quality score change
-        quality_diff = abs(metrics.quality_score - self._last_saved_metrics.quality_score)
-        if quality_diff >= self.change_thresholds['quality_score']:
-            return True, f"quality_change_{quality_diff}"
-
-        # Force save after max interval even if nothing changed
-        if self._last_save_time:
-            elapsed = (now - self._last_save_time).total_seconds()
-            if elapsed >= self.max_save_interval:
-                return True, "periodic"
-
-        return False, "no_change"
-
-    def save_metrics(self, metrics: NetworkMetrics, force: bool = False):
-        """Save a metrics snapshot if conditions are met"""
-        should_save, reason = self.should_save(metrics)
-
-        if not should_save and not force:
+        # Only save if critical event OR regular interval reached
+        if not critical_event and not is_regular_save_time:
             return False
 
         try:
@@ -698,33 +684,32 @@ class HistoryStorage:
                 'download_mbps': metrics.download_mbps,
                 'upload_mbps': metrics.upload_mbps,
                 'connected': metrics.is_connected,
-                'reason': reason,  # Why this record was saved
+                'reason': reason,
             }
 
             with self._write_lock:
-                # Read existing data
                 data = self._read_data()
                 data['records'].append(record)
 
-                # Keep only last 30 days of data
-                max_records = 100000
-                if len(data['records']) > max_records:
-                    data['records'] = data['records'][-max_records:]
+                # Keep max 100000 records
+                if len(data['records']) > 100000:
+                    data['records'] = data['records'][-100000:]
 
-                # Write back
                 with open(self.data_file, 'w', encoding='utf-8') as f:
                     json.dump(data, f)
 
             self._last_saved_metrics = metrics
-            self._last_save_time = datetime.now()
+            self._last_regular_save_time = now
 
-            logger.info(f"History saved [{reason}]: ping={metrics.ping_ms}ms, loss={metrics.packet_loss_percent}%, quality={metrics.quality_score}")
+            if critical_event:
+                logger.warning(f"[EVENT] {reason}: ping={metrics.ping_ms}ms, loss={metrics.packet_loss_percent}%, connected={metrics.is_connected}")
+            else:
+                logger.debug(f"History saved: ping={metrics.ping_ms}ms, loss={metrics.packet_loss_percent}%")
+
             return True
 
         except Exception as e:
-            logger.error(f"Error saving metrics to history: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error saving metrics: {e}")
             return False
 
     def _read_data(self) -> Dict:
