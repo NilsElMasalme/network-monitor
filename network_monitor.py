@@ -910,29 +910,43 @@ class HistoryStorage:
         # ============ SCORING ============
 
         # 1. PACKET LOSS SCORE (40% weight)
-        # Perfect: 0 events, Terrible: >10 events per 24h
-        loss_events_per_day = (packet_loss_events / hours_span) * 24
-        if loss_events_per_day == 0:
-            packet_loss_score = 100
-        elif loss_events_per_day <= 1:
-            packet_loss_score = 90
-        elif loss_events_per_day <= 3:
-            packet_loss_score = 75
-        elif loss_events_per_day <= 5:
-            packet_loss_score = 60
-        elif loss_events_per_day <= 10:
-            packet_loss_score = 40
+        # Use absolute event count for short periods, normalized for longer
+        if hours_span < 4:
+            # For short monitoring periods, use absolute counts (be lenient)
+            if packet_loss_events == 0:
+                packet_loss_score = 100
+            elif packet_loss_events == 1:
+                packet_loss_score = 85
+            elif packet_loss_events <= 3:
+                packet_loss_score = 70
+            elif packet_loss_events <= 5:
+                packet_loss_score = 55
+            else:
+                packet_loss_score = max(20, 50 - packet_loss_events * 3)
         else:
-            packet_loss_score = max(0, 20 - loss_events_per_day)
+            # For longer periods, normalize to events per day
+            loss_events_per_day = (packet_loss_events / hours_span) * 24
+            if loss_events_per_day == 0:
+                packet_loss_score = 100
+            elif loss_events_per_day <= 2:
+                packet_loss_score = 90
+            elif loss_events_per_day <= 5:
+                packet_loss_score = 75
+            elif loss_events_per_day <= 10:
+                packet_loss_score = 60
+            elif loss_events_per_day <= 20:
+                packet_loss_score = 40
+            else:
+                packet_loss_score = max(0, 30 - loss_events_per_day)
 
         # Also factor in average loss percentage
         avg_loss = sum(losses) / len(losses) if losses else 0
-        if avg_loss > 5:
-            packet_loss_score = min(packet_loss_score, 30)
+        if avg_loss > 10:
+            packet_loss_score = min(packet_loss_score, 20)
+        elif avg_loss > 5:
+            packet_loss_score = min(packet_loss_score, 40)
         elif avg_loss > 2:
-            packet_loss_score = min(packet_loss_score, 50)
-        elif avg_loss > 0.5:
-            packet_loss_score = min(packet_loss_score, 70)
+            packet_loss_score = min(packet_loss_score, 60)
 
         # 2. PING STABILITY SCORE (25% weight)
         if pings:
