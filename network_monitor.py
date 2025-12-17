@@ -366,6 +366,11 @@ class NetworkMonitor:
                 (1 - len(successful_pings) / len(ping_results)) * 100, 1
             )
 
+        # If all pings failed, mark as disconnected
+        if len(successful_pings) == 0:
+            metrics.is_connected = False
+            metrics.packet_loss_percent = 100.0
+
         if latencies:
             metrics.ping_ms = latencies[-1]  # Most recent
             metrics.ping_min_ms = min(latencies)
@@ -393,6 +398,14 @@ class NetworkMonitor:
     def _calculate_quality(self, m: NetworkMetrics) -> tuple:
         """Calculate overall connection quality score (0-100)"""
         score = 100
+
+        # If not connected, score is 0
+        if not m.is_connected:
+            return 0, "Disconnected"
+
+        # If ping failed completely, very low score
+        if m.ping_ms is None:
+            return 10, "No Response"
 
         # Ping penalty
         if m.ping_ms:

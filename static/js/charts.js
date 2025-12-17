@@ -502,11 +502,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // Update real-time charts every second
     setInterval(updateCharts, 1000);
 
-    // Update history charts and score every 60 seconds
-    setInterval(function() {
-        updateHistoryCharts();
-        updateLongtermScore();
-    }, 60000);
+    // Update longterm score every 10 seconds (fast feedback)
+    setInterval(updateLongtermScore, 10000);
+
+    // Update history charts every 30 seconds
+    setInterval(updateHistoryCharts, 30000);
 
     // Initial updates
     setTimeout(updateCharts, 500);
