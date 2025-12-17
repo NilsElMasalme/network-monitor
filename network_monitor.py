@@ -839,13 +839,8 @@ class HistoryStorage:
         """
         Calculate a long-term connection quality score based on historical data.
 
-        Factors weighted by importance for gaming/stability:
-        - Packet Loss Events (40%) - Most critical
-        - Ping Stability (25%) - Average and spikes
-        - Connection Stability (20%) - Disconnects/reconnects
-        - Jitter (15%) - Consistency
-
-        Returns dict with score, grade, and detailed breakdown.
+        Simple approach: Use the average of all quality scores, with small penalties
+        for problematic events.
         """
         data = self._read_data()
         records = data.get('records', [])
@@ -898,152 +893,91 @@ class HistoryStorage:
         disconnect_count = sum(1 for r in filtered if r.get('reason') == 'disconnected')
         packet_loss_events = sum(1 for r in filtered if r.get('reason') in ['packet_loss_start', 'high_packet_loss'])
         ping_spike_events = sum(1 for r in filtered if r.get('reason') == 'ping_spike')
+        total_events = len(filtered)
 
-        # Calculate time span in hours
+        # Calculate time span
         try:
             first_ts = datetime.fromisoformat(filtered[0]['timestamp'])
             last_ts = datetime.fromisoformat(filtered[-1]['timestamp'])
-            hours_span = max((last_ts - first_ts).total_seconds() / 3600, 1)
+            hours_span = max((last_ts - first_ts).total_seconds() / 3600, 0.1)
         except:
             hours_span = 1
 
-        # ============ SCORING ============
+        # ============ SIMPLE SCORING ============
 
-        # 1. PACKET LOSS SCORE (40% weight)
-        # Use absolute event count for short periods, normalized for longer
-        if hours_span < 4:
-            # For short monitoring periods, use absolute counts (be lenient)
-            if packet_loss_events == 0:
-                packet_loss_score = 100
-            elif packet_loss_events == 1:
-                packet_loss_score = 85
-            elif packet_loss_events <= 3:
-                packet_loss_score = 70
-            elif packet_loss_events <= 5:
-                packet_loss_score = 55
-            else:
-                packet_loss_score = max(20, 50 - packet_loss_events * 3)
-        else:
-            # For longer periods, normalize to events per day
-            loss_events_per_day = (packet_loss_events / hours_span) * 24
-            if loss_events_per_day == 0:
-                packet_loss_score = 100
-            elif loss_events_per_day <= 2:
-                packet_loss_score = 90
-            elif loss_events_per_day <= 5:
-                packet_loss_score = 75
-            elif loss_events_per_day <= 10:
-                packet_loss_score = 60
-            elif loss_events_per_day <= 20:
-                packet_loss_score = 40
-            else:
-                packet_loss_score = max(0, 30 - loss_events_per_day)
+        # Base: Average of all quality scores (this reflects live experience)
+        avg_quality = sum(qualities) / len(qualities)
 
-        # Also factor in average loss percentage
+        # Calculate component scores for display
+        avg_ping = sum(pings) / len(pings) if pings else 0
+        avg_jitter = sum(jitters) / len(jitters) if jitters else 0
         avg_loss = sum(losses) / len(losses) if losses else 0
-        if avg_loss > 10:
-            packet_loss_score = min(packet_loss_score, 20)
-        elif avg_loss > 5:
-            packet_loss_score = min(packet_loss_score, 40)
-        elif avg_loss > 2:
-            packet_loss_score = min(packet_loss_score, 60)
+        max_ping = max(pings) if pings else 0
+        max_jitter = max(jitters) if jitters else 0
 
-        # 2. PING STABILITY SCORE (25% weight)
-        if pings:
-            avg_ping = sum(pings) / len(pings)
-            max_ping = max(pings)
-            ping_std = (sum((p - avg_ping) ** 2 for p in pings) / len(pings)) ** 0.5
-
-            # Base score from average ping
-            if avg_ping <= 20:
-                ping_score = 100
-            elif avg_ping <= 30:
-                ping_score = 95
-            elif avg_ping <= 50:
-                ping_score = 85
-            elif avg_ping <= 80:
-                ping_score = 70
-            elif avg_ping <= 100:
-                ping_score = 55
-            else:
-                ping_score = max(0, 40 - (avg_ping - 100) / 5)
-
-            # Penalty for high variance (unstable ping)
-            if ping_std > 50:
-                ping_score -= 30
-            elif ping_std > 30:
-                ping_score -= 20
-            elif ping_std > 15:
-                ping_score -= 10
-
-            # Penalty for extreme spikes
-            spike_ratio = ping_spike_events / max(len(filtered), 1) * 100
-            if spike_ratio > 5:
-                ping_score -= 25
-            elif spike_ratio > 2:
-                ping_score -= 15
-            elif spike_ratio > 0.5:
-                ping_score -= 5
-
-            ping_score = max(0, min(100, ping_score))
+        # Ping score (based on average)
+        if avg_ping <= 25:
+            ping_score = 100
+        elif avg_ping <= 40:
+            ping_score = 90
+        elif avg_ping <= 60:
+            ping_score = 80
+        elif avg_ping <= 80:
+            ping_score = 70
+        elif avg_ping <= 100:
+            ping_score = 60
         else:
-            ping_score = 0
-            avg_ping = 0
-            max_ping = 0
-            ping_std = 0
+            ping_score = max(30, 100 - avg_ping)
 
-        # 3. CONNECTION STABILITY SCORE (20% weight)
-        disconnects_per_day = (disconnect_count / hours_span) * 24
-        if disconnects_per_day == 0:
+        # Jitter score
+        if avg_jitter <= 5:
+            jitter_score = 100
+        elif avg_jitter <= 10:
+            jitter_score = 90
+        elif avg_jitter <= 15:
+            jitter_score = 80
+        elif avg_jitter <= 25:
+            jitter_score = 70
+        else:
+            jitter_score = max(30, 100 - avg_jitter * 2)
+
+        # Packet loss score (based on % of records with any loss)
+        loss_ratio = sum(1 for l in losses if l > 0) / len(losses) * 100
+        if loss_ratio == 0:
+            packet_loss_score = 100
+        elif loss_ratio < 1:
+            packet_loss_score = 95
+        elif loss_ratio < 2:
+            packet_loss_score = 85
+        elif loss_ratio < 5:
+            packet_loss_score = 70
+        elif loss_ratio < 10:
+            packet_loss_score = 50
+        else:
+            packet_loss_score = max(20, 100 - loss_ratio * 2)
+
+        # Connection score
+        if disconnect_count == 0:
             connection_score = 100
-        elif disconnects_per_day <= 0.5:
+        elif disconnect_count == 1:
             connection_score = 90
-        elif disconnects_per_day <= 1:
+        elif disconnect_count <= 3:
             connection_score = 75
-        elif disconnects_per_day <= 2:
+        elif disconnect_count <= 5:
             connection_score = 60
-        elif disconnects_per_day <= 5:
-            connection_score = 40
         else:
-            connection_score = max(0, 20 - disconnects_per_day * 2)
+            connection_score = max(20, 100 - disconnect_count * 10)
 
-        # 4. JITTER SCORE (15% weight)
-        if jitters:
-            avg_jitter = sum(jitters) / len(jitters)
-            max_jitter = max(jitters)
-
-            if avg_jitter <= 3:
-                jitter_score = 100
-            elif avg_jitter <= 5:
-                jitter_score = 95
-            elif avg_jitter <= 10:
-                jitter_score = 85
-            elif avg_jitter <= 20:
-                jitter_score = 70
-            elif avg_jitter <= 30:
-                jitter_score = 50
-            else:
-                jitter_score = max(0, 30 - avg_jitter)
-
-            # Penalty for extreme jitter spikes
-            if max_jitter > 100:
-                jitter_score -= 20
-            elif max_jitter > 50:
-                jitter_score -= 10
-
-            jitter_score = max(0, min(100, jitter_score))
-        else:
-            jitter_score = 0
-            avg_jitter = 0
-            max_jitter = 0
-
-        # ============ FINAL SCORE ============
+        # Final score: weighted average matching live score behavior
         final_score = int(
-            packet_loss_score * 0.40 +
-            ping_score * 0.25 +
-            connection_score * 0.20 +
-            jitter_score * 0.15
+            avg_quality * 0.50 +          # 50% from actual quality measurements
+            ping_score * 0.20 +            # 20% ping
+            jitter_score * 0.15 +          # 15% jitter
+            packet_loss_score * 0.10 +     # 10% packet loss events
+            connection_score * 0.05        # 5% disconnects
         )
+
+        final_score = max(0, min(100, final_score))
 
         # Determine grade
         if final_score >= 95:
@@ -1085,30 +1019,34 @@ class HistoryStorage:
             'details': {
                 'packet_loss': {
                     'score': int(packet_loss_score),
-                    'weight': '40%',
+                    'weight': '10%',
                     'events': packet_loss_events,
-                    'events_per_day': round(loss_events_per_day, 1),
+                    'records_with_loss': sum(1 for l in losses if l > 0),
                     'avg_percent': round(avg_loss, 2)
                 },
                 'ping': {
                     'score': int(ping_score),
-                    'weight': '25%',
+                    'weight': '20%',
                     'avg_ms': round(avg_ping, 1),
-                    'max_ms': round(max_ping, 1) if pings else 0,
-                    'std_dev': round(ping_std, 1) if pings else 0,
+                    'max_ms': round(max_ping, 1),
                     'spike_events': ping_spike_events
                 },
                 'connection': {
                     'score': int(connection_score),
-                    'weight': '20%',
-                    'disconnects': disconnect_count,
-                    'disconnects_per_day': round(disconnects_per_day, 1)
+                    'weight': '5%',
+                    'disconnects': disconnect_count
                 },
                 'jitter': {
                     'score': int(jitter_score),
                     'weight': '15%',
-                    'avg_ms': round(avg_jitter, 1) if jitters else 0,
-                    'max_ms': round(max_jitter, 1) if jitters else 0
+                    'avg_ms': round(avg_jitter, 1),
+                    'max_ms': round(max_jitter, 1)
+                },
+                'quality_avg': {
+                    'score': int(avg_quality),
+                    'weight': '50%',
+                    'min': min(qualities),
+                    'max': max(qualities)
                 }
             }
         }
