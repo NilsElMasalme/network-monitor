@@ -731,25 +731,27 @@ class HistoryStorage:
         now = datetime.now()
         if period == 'day':
             cutoff = now - timedelta(hours=24)
-            interval_minutes = 1  # Show every record
+            aggregate = False  # Show ALL records for day view
         elif period == 'week':
             cutoff = now - timedelta(days=7)
-            interval_minutes = 15  # Aggregate every 15 minutes
+            aggregate = True
+            interval_minutes = 5  # 5 min intervals for week
         elif period == 'month':
             cutoff = now - timedelta(days=30)
-            interval_minutes = 60  # Aggregate every hour
+            aggregate = True
+            interval_minutes = 30  # 30 min intervals for month
         else:
             cutoff = now - timedelta(hours=24)
-            interval_minutes = 1
+            aggregate = False
 
         cutoff_iso = cutoff.isoformat()
 
         # Filter records by time
         filtered = [r for r in records if r['timestamp'] >= cutoff_iso]
 
-        # Aggregate if needed
-        if interval_minutes > 1:
-            filtered = self._aggregate_records(filtered, interval_minutes)
+        # Aggregate if needed (but preserve max values for packet_loss!)
+        if aggregate:
+            filtered = self._aggregate_records_smart(filtered, interval_minutes)
 
         # Build response
         result = {
@@ -768,7 +770,7 @@ class HistoryStorage:
             try:
                 ts = datetime.fromisoformat(r['timestamp'])
                 if period == 'day':
-                    ts_str = ts.strftime('%H:%M')
+                    ts_str = ts.strftime('%H:%M:%S')  # Include seconds for precision
                 elif period == 'week':
                     ts_str = ts.strftime('%a %H:%M')
                 else:
@@ -787,8 +789,11 @@ class HistoryStorage:
 
         return result
 
-    def _aggregate_records(self, records: List[Dict], interval_minutes: int) -> List[Dict]:
-        """Aggregate records into intervals"""
+    def _aggregate_records_smart(self, records: List[Dict], interval_minutes: int) -> List[Dict]:
+        """
+        Aggregate records but preserve important events.
+        Uses MAX for packet_loss (don't hide spikes!) and AVG for others.
+        """
         if not records:
             return []
 
@@ -805,41 +810,49 @@ class HistoryStorage:
             if bucket_start is None:
                 bucket_start = ts
 
-            # Check if still in same bucket
             if (ts - bucket_start).total_seconds() < interval_minutes * 60:
                 bucket.append(r)
             else:
-                # Finalize bucket
                 if bucket:
-                    aggregated.append(self._average_bucket(bucket))
+                    aggregated.append(self._smart_bucket(bucket))
                 bucket = [r]
                 bucket_start = ts
 
-        # Don't forget last bucket
         if bucket:
-            aggregated.append(self._average_bucket(bucket))
+            aggregated.append(self._smart_bucket(bucket))
 
         return aggregated
 
-    def _average_bucket(self, records: List[Dict]) -> Dict:
-        """Calculate average values for a bucket of records"""
+    def _smart_bucket(self, records: List[Dict]) -> Dict:
+        """
+        Smart aggregation: MAX for problems, AVG for normal metrics.
+        """
         if not records:
             return {}
 
         def safe_avg(values):
             valid = [v for v in values if v is not None]
-            return round(sum(valid) / len(valid), 2) if valid else None
+            return round(sum(valid) / len(valid), 2) if valid else 0
+
+        def safe_max(values):
+            valid = [v for v in values if v is not None]
+            return max(valid) if valid else 0
+
+        def safe_min(values):
+            valid = [v for v in values if v is not None]
+            return min(valid) if valid else 0
 
         return {
-            'timestamp': records[len(records)//2]['timestamp'],  # Use middle timestamp
-            'ping_ms': safe_avg([r.get('ping_ms') for r in records]),
-            'jitter_ms': safe_avg([r.get('jitter_ms') for r in records]),
-            'packet_loss_percent': safe_avg([r.get('packet_loss_percent') for r in records]),
-            'signal_percent': safe_avg([r.get('signal_percent') for r in records]),
-            'quality_score': safe_avg([r.get('quality_score') for r in records]),
+            'timestamp': records[len(records)//2]['timestamp'],
+            'ping_ms': safe_max([r.get('ping_ms') for r in records]),  # MAX - show worst
+            'jitter_ms': safe_max([r.get('jitter_ms') for r in records]),  # MAX
+            'packet_loss_percent': safe_max([r.get('packet_loss_percent') for r in records]),  # MAX - critical!
+            'signal_percent': safe_min([r.get('signal_percent') for r in records]),  # MIN - show worst
+            'quality_score': safe_min([r.get('quality_score') for r in records]),  # MIN - show worst
             'download_mbps': safe_avg([r.get('download_mbps') for r in records]),
             'upload_mbps': safe_avg([r.get('upload_mbps') for r in records]),
         }
+
 
 
 # Singleton instance
