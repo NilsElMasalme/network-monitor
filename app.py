@@ -169,6 +169,13 @@ def start_server(host='127.0.0.1', port=5555, debug=False):
     # Start background monitoring with history storage
     monitor.start_monitoring(interval=1.0, history_storage=history_storage)
 
+    # Save initial metrics immediately for testing
+    import time
+    time.sleep(2)  # Wait for first metrics
+    if monitor.current_metrics:
+        history_storage.save_metrics(monitor.current_metrics)
+        print("  [OK] Initial metrics saved to history")
+
     print(f"\n{'='*60}")
     print("  WiFi Gaming Monitor - Web Dashboard")
     print(f"{'='*60}")

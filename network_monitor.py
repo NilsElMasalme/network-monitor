@@ -623,17 +623,21 @@ class HistoryStorage:
             data = self._read_data()
             data['records'].append(record)
 
-            # Keep only last 30 days of data (assuming ~1 record per minute = ~43200 records)
-            max_records = 43200
+            # Keep only last 30 days of data (assuming ~1 record per 10 sec = ~259200 records)
+            max_records = 259200
             if len(data['records']) > max_records:
                 data['records'] = data['records'][-max_records:]
 
             # Write back
             with open(self.data_file, 'w', encoding='utf-8') as f:
-                json.dump(data, f)
+                json.dump(data, f, indent=2)
+
+            logger.info(f"Saved to {self.data_file}, total records: {len(data['records'])}")
 
         except Exception as e:
             logger.error(f"Error saving metrics to history: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _read_data(self) -> Dict:
         """Read data from file"""
