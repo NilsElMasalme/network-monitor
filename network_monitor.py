@@ -823,6 +823,270 @@ class HistoryStorage:
 
         return aggregated
 
+    def calculate_longterm_score(self, period: str = 'day') -> Dict:
+        """
+        Calculate a long-term connection quality score based on historical data.
+
+        Factors weighted by importance for gaming/stability:
+        - Packet Loss Events (40%) - Most critical
+        - Ping Stability (25%) - Average and spikes
+        - Connection Stability (20%) - Disconnects/reconnects
+        - Jitter (15%) - Consistency
+
+        Returns dict with score, grade, and detailed breakdown.
+        """
+        data = self._read_data()
+        records = data.get('records', [])
+
+        if not records:
+            return {
+                'score': 0,
+                'grade': 'N/A',
+                'message': 'Keine Daten verfügbar',
+                'details': {},
+                'period': period,
+                'record_count': 0
+            }
+
+        # Filter by period
+        now = datetime.now()
+        if period == 'day':
+            cutoff = now - timedelta(hours=24)
+            period_label = "24 Stunden"
+        elif period == 'week':
+            cutoff = now - timedelta(days=7)
+            period_label = "7 Tage"
+        elif period == 'month':
+            cutoff = now - timedelta(days=30)
+            period_label = "30 Tage"
+        else:
+            cutoff = now - timedelta(hours=24)
+            period_label = "24 Stunden"
+
+        cutoff_iso = cutoff.isoformat()
+        filtered = [r for r in records if r['timestamp'] >= cutoff_iso]
+
+        if not filtered:
+            return {
+                'score': 0,
+                'grade': 'N/A',
+                'message': f'Keine Daten für {period_label}',
+                'details': {},
+                'period': period,
+                'record_count': 0
+            }
+
+        # Extract metrics
+        pings = [r.get('ping_ms') for r in filtered if r.get('ping_ms') is not None]
+        jitters = [r.get('jitter_ms') for r in filtered if r.get('jitter_ms') is not None]
+        losses = [r.get('packet_loss_percent', 0) for r in filtered]
+        qualities = [r.get('quality_score', 100) for r in filtered]
+
+        # Count events
+        disconnect_count = sum(1 for r in filtered if r.get('reason') == 'disconnected')
+        packet_loss_events = sum(1 for r in filtered if r.get('reason') in ['packet_loss_start', 'high_packet_loss'])
+        ping_spike_events = sum(1 for r in filtered if r.get('reason') == 'ping_spike')
+
+        # Calculate time span in hours
+        try:
+            first_ts = datetime.fromisoformat(filtered[0]['timestamp'])
+            last_ts = datetime.fromisoformat(filtered[-1]['timestamp'])
+            hours_span = max((last_ts - first_ts).total_seconds() / 3600, 1)
+        except:
+            hours_span = 1
+
+        # ============ SCORING ============
+
+        # 1. PACKET LOSS SCORE (40% weight)
+        # Perfect: 0 events, Terrible: >10 events per 24h
+        loss_events_per_day = (packet_loss_events / hours_span) * 24
+        if loss_events_per_day == 0:
+            packet_loss_score = 100
+        elif loss_events_per_day <= 1:
+            packet_loss_score = 90
+        elif loss_events_per_day <= 3:
+            packet_loss_score = 75
+        elif loss_events_per_day <= 5:
+            packet_loss_score = 60
+        elif loss_events_per_day <= 10:
+            packet_loss_score = 40
+        else:
+            packet_loss_score = max(0, 20 - loss_events_per_day)
+
+        # Also factor in average loss percentage
+        avg_loss = sum(losses) / len(losses) if losses else 0
+        if avg_loss > 5:
+            packet_loss_score = min(packet_loss_score, 30)
+        elif avg_loss > 2:
+            packet_loss_score = min(packet_loss_score, 50)
+        elif avg_loss > 0.5:
+            packet_loss_score = min(packet_loss_score, 70)
+
+        # 2. PING STABILITY SCORE (25% weight)
+        if pings:
+            avg_ping = sum(pings) / len(pings)
+            max_ping = max(pings)
+            ping_std = (sum((p - avg_ping) ** 2 for p in pings) / len(pings)) ** 0.5
+
+            # Base score from average ping
+            if avg_ping <= 20:
+                ping_score = 100
+            elif avg_ping <= 30:
+                ping_score = 95
+            elif avg_ping <= 50:
+                ping_score = 85
+            elif avg_ping <= 80:
+                ping_score = 70
+            elif avg_ping <= 100:
+                ping_score = 55
+            else:
+                ping_score = max(0, 40 - (avg_ping - 100) / 5)
+
+            # Penalty for high variance (unstable ping)
+            if ping_std > 50:
+                ping_score -= 30
+            elif ping_std > 30:
+                ping_score -= 20
+            elif ping_std > 15:
+                ping_score -= 10
+
+            # Penalty for extreme spikes
+            spike_ratio = ping_spike_events / max(len(filtered), 1) * 100
+            if spike_ratio > 5:
+                ping_score -= 25
+            elif spike_ratio > 2:
+                ping_score -= 15
+            elif spike_ratio > 0.5:
+                ping_score -= 5
+
+            ping_score = max(0, min(100, ping_score))
+        else:
+            ping_score = 0
+            avg_ping = 0
+            max_ping = 0
+            ping_std = 0
+
+        # 3. CONNECTION STABILITY SCORE (20% weight)
+        disconnects_per_day = (disconnect_count / hours_span) * 24
+        if disconnects_per_day == 0:
+            connection_score = 100
+        elif disconnects_per_day <= 0.5:
+            connection_score = 90
+        elif disconnects_per_day <= 1:
+            connection_score = 75
+        elif disconnects_per_day <= 2:
+            connection_score = 60
+        elif disconnects_per_day <= 5:
+            connection_score = 40
+        else:
+            connection_score = max(0, 20 - disconnects_per_day * 2)
+
+        # 4. JITTER SCORE (15% weight)
+        if jitters:
+            avg_jitter = sum(jitters) / len(jitters)
+            max_jitter = max(jitters)
+
+            if avg_jitter <= 3:
+                jitter_score = 100
+            elif avg_jitter <= 5:
+                jitter_score = 95
+            elif avg_jitter <= 10:
+                jitter_score = 85
+            elif avg_jitter <= 20:
+                jitter_score = 70
+            elif avg_jitter <= 30:
+                jitter_score = 50
+            else:
+                jitter_score = max(0, 30 - avg_jitter)
+
+            # Penalty for extreme jitter spikes
+            if max_jitter > 100:
+                jitter_score -= 20
+            elif max_jitter > 50:
+                jitter_score -= 10
+
+            jitter_score = max(0, min(100, jitter_score))
+        else:
+            jitter_score = 0
+            avg_jitter = 0
+            max_jitter = 0
+
+        # ============ FINAL SCORE ============
+        final_score = int(
+            packet_loss_score * 0.40 +
+            ping_score * 0.25 +
+            connection_score * 0.20 +
+            jitter_score * 0.15
+        )
+
+        # Determine grade
+        if final_score >= 95:
+            grade = 'A+'
+            message = 'Exzellente Verbindung'
+        elif final_score >= 90:
+            grade = 'A'
+            message = 'Sehr gute Verbindung'
+        elif final_score >= 85:
+            grade = 'B+'
+            message = 'Gute Verbindung'
+        elif final_score >= 80:
+            grade = 'B'
+            message = 'Solide Verbindung'
+        elif final_score >= 70:
+            grade = 'C+'
+            message = 'Akzeptable Verbindung'
+        elif final_score >= 60:
+            grade = 'C'
+            message = 'Mäßige Verbindung'
+        elif final_score >= 50:
+            grade = 'D'
+            message = 'Problematische Verbindung'
+        elif final_score >= 30:
+            grade = 'E'
+            message = 'Schlechte Verbindung'
+        else:
+            grade = 'F'
+            message = 'Unbrauchbare Verbindung'
+
+        return {
+            'score': final_score,
+            'grade': grade,
+            'message': message,
+            'period': period,
+            'period_label': period_label,
+            'record_count': len(filtered),
+            'hours_analyzed': round(hours_span, 1),
+            'details': {
+                'packet_loss': {
+                    'score': int(packet_loss_score),
+                    'weight': '40%',
+                    'events': packet_loss_events,
+                    'events_per_day': round(loss_events_per_day, 1),
+                    'avg_percent': round(avg_loss, 2)
+                },
+                'ping': {
+                    'score': int(ping_score),
+                    'weight': '25%',
+                    'avg_ms': round(avg_ping, 1),
+                    'max_ms': round(max_ping, 1) if pings else 0,
+                    'std_dev': round(ping_std, 1) if pings else 0,
+                    'spike_events': ping_spike_events
+                },
+                'connection': {
+                    'score': int(connection_score),
+                    'weight': '20%',
+                    'disconnects': disconnect_count,
+                    'disconnects_per_day': round(disconnects_per_day, 1)
+                },
+                'jitter': {
+                    'score': int(jitter_score),
+                    'weight': '15%',
+                    'avg_ms': round(avg_jitter, 1) if jitters else 0,
+                    'max_ms': round(max_jitter, 1) if jitters else 0
+                }
+            }
+        }
+
     def _smart_bucket(self, records: List[Dict]) -> Dict:
         """
         Smart aggregation: MAX for problems, AVG for normal metrics.

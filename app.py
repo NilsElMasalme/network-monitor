@@ -85,6 +85,16 @@ def api_long_term_history():
     return jsonify(data)
 
 
+@app.route('/api/longterm-score')
+def api_longterm_score():
+    """Get long-term connection quality score"""
+    period = request.args.get('period', 'day')  # day, week, month
+    if period not in ['day', 'week', 'month']:
+        period = 'day'
+    score_data = history_storage.calculate_longterm_score(period=period)
+    return jsonify(score_data)
+
+
 @app.route('/api/events')
 def api_events():
     """Get recent events/alerts"""

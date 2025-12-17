@@ -84,6 +84,48 @@
                     </div>
                 </div>
 
+                <!-- Long-term Score Card -->
+                <div id="longterm-score-card" class="longterm-score-card">
+                    <div class="score-main">
+                        <div class="score-grade" id="lt-grade">--</div>
+                        <div class="score-value"><span id="lt-score">--</span>/100</div>
+                        <div class="score-message" id="lt-message">Lade...</div>
+                    </div>
+                    <div class="score-details">
+                        <div class="score-detail-item">
+                            <span class="detail-label">Packet Loss</span>
+                            <div class="detail-bar">
+                                <div class="detail-fill" id="lt-loss-bar" style="width: 0%"></div>
+                            </div>
+                            <span class="detail-value" id="lt-loss-score">--</span>
+                        </div>
+                        <div class="score-detail-item">
+                            <span class="detail-label">Ping Stability</span>
+                            <div class="detail-bar">
+                                <div class="detail-fill" id="lt-ping-bar" style="width: 0%"></div>
+                            </div>
+                            <span class="detail-value" id="lt-ping-score">--</span>
+                        </div>
+                        <div class="score-detail-item">
+                            <span class="detail-label">Connection</span>
+                            <div class="detail-bar">
+                                <div class="detail-fill" id="lt-conn-bar" style="width: 0%"></div>
+                            </div>
+                            <span class="detail-value" id="lt-conn-score">--</span>
+                        </div>
+                        <div class="score-detail-item">
+                            <span class="detail-label">Jitter</span>
+                            <div class="detail-bar">
+                                <div class="detail-fill" id="lt-jitter-bar" style="width: 0%"></div>
+                            </div>
+                            <span class="detail-value" id="lt-jitter-score">--</span>
+                        </div>
+                    </div>
+                    <div class="score-stats" id="lt-stats">
+                        <!-- Filled by JS -->
+                    </div>
+                </div>
+
                 <div class="history-charts">
                     <div class="chart-container history-chart">
                         <h4>Ping & Jitter</h4>

@@ -416,6 +416,67 @@ async function updateHistoryCharts(period = null) {
     }
 }
 
+async function updateLongtermScore(period = null) {
+    if (period) {
+        currentPeriod = period;
+    }
+
+    try {
+        const response = await fetch(`/api/longterm-score?period=${currentPeriod}`);
+        const data = await response.json();
+
+        // Update grade
+        const gradeEl = document.getElementById('lt-grade');
+        gradeEl.textContent = data.grade;
+        gradeEl.className = 'score-grade';
+        if (data.grade.startsWith('A')) gradeEl.classList.add('grade-a');
+        else if (data.grade.startsWith('B')) gradeEl.classList.add('grade-b');
+        else if (data.grade.startsWith('C')) gradeEl.classList.add('grade-c');
+        else if (data.grade === 'D') gradeEl.classList.add('grade-d');
+        else gradeEl.classList.add('grade-e');
+
+        // Update score
+        document.getElementById('lt-score').textContent = data.score;
+        document.getElementById('lt-message').textContent = data.message;
+
+        // Update detail bars
+        if (data.details) {
+            updateDetailBar('lt-loss', data.details.packet_loss?.score || 0);
+            updateDetailBar('lt-ping', data.details.ping?.score || 0);
+            updateDetailBar('lt-conn', data.details.connection?.score || 0);
+            updateDetailBar('lt-jitter', data.details.jitter?.score || 0);
+        }
+
+        // Update stats
+        const statsEl = document.getElementById('lt-stats');
+        if (data.details) {
+            statsEl.innerHTML = `
+                <div><strong>${data.record_count}</strong> Messungen</div>
+                <div><strong>${data.hours_analyzed}h</strong> analysiert</div>
+                <div>Ping: <strong>${data.details.ping?.avg_ms || 0}ms</strong> avg</div>
+                <div>Loss Events: <strong>${data.details.packet_loss?.events || 0}</strong></div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error updating longterm score:', error);
+    }
+}
+
+function updateDetailBar(prefix, score) {
+    const bar = document.getElementById(`${prefix}-bar`);
+    const value = document.getElementById(`${prefix}-score`);
+
+    if (bar && value) {
+        bar.style.width = `${score}%`;
+        value.textContent = score;
+
+        bar.className = 'detail-fill';
+        if (score >= 80) bar.classList.add('score-high');
+        else if (score >= 50) bar.classList.add('score-mid');
+        else bar.classList.add('score-low');
+    }
+}
+
 function initPeriodSelector() {
     const buttons = document.querySelectorAll('.period-btn');
     buttons.forEach(btn => {
@@ -424,9 +485,10 @@ function initPeriodSelector() {
             buttons.forEach(b => b.classList.remove('active'));
             this.classList.add('active');
 
-            // Update charts
+            // Update charts AND score
             const period = this.dataset.period;
             updateHistoryCharts(period);
+            updateLongtermScore(period);
         });
     });
 }
@@ -440,12 +502,14 @@ document.addEventListener('DOMContentLoaded', function() {
     // Update real-time charts every second
     setInterval(updateCharts, 1000);
 
-    // Update history charts every 60 seconds
+    // Update history charts and score every 60 seconds
     setInterval(function() {
         updateHistoryCharts();
+        updateLongtermScore();
     }, 60000);
 
     // Initial updates
     setTimeout(updateCharts, 500);
     setTimeout(updateHistoryCharts, 1000);
+    setTimeout(updateLongtermScore, 1500);
 });
