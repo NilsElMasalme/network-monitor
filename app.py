@@ -16,9 +16,6 @@ app.secret_key = os.urandom(24)
 monitor = get_monitor()
 history_storage = get_history_storage()
 
-# Counter for periodic history saving (save every 60 seconds)
-_save_counter = 0
-
 
 @app.route('/')
 def index():
@@ -148,7 +145,6 @@ def partial_stats():
 def stream():
     """Server-Sent Events for real-time metric updates"""
     def generate():
-        global _save_counter
         while True:
             metrics = monitor.current_metrics
             if metrics:
@@ -162,12 +158,6 @@ def stream():
                 }
                 yield f"data: {json.dumps(data)}\n\n"
 
-                # Save to long-term history every 60 seconds
-                _save_counter += 1
-                if _save_counter >= 60:
-                    _save_counter = 0
-                    history_storage.save_metrics(metrics)
-
             import time
             time.sleep(1)
 
@@ -176,8 +166,8 @@ def stream():
 
 def start_server(host='127.0.0.1', port=5555, debug=False):
     """Start the Flask server and monitoring"""
-    # Start background monitoring
-    monitor.start_monitoring(interval=1.0)
+    # Start background monitoring with history storage
+    monitor.start_monitoring(interval=1.0, history_storage=history_storage)
 
     print(f"\n{'='*60}")
     print("  WiFi Gaming Monitor - Web Dashboard")

@@ -552,17 +552,27 @@ class NetworkMonitor:
 
         return stats
 
-    def start_monitoring(self, interval: float = 1.0):
+    def start_monitoring(self, interval: float = 1.0, history_storage=None):
         """Start continuous monitoring in background thread"""
         if self._running:
             return
 
         self._running = True
+        self._history_storage = history_storage
+        self._save_counter = 0
 
         def monitor_loop():
             while self._running:
                 try:
-                    self.collect_metrics()
+                    metrics = self.collect_metrics()
+
+                    # Save to long-term history every 10 seconds
+                    if self._history_storage:
+                        self._save_counter += 1
+                        if self._save_counter >= 10:
+                            self._save_counter = 0
+                            self._history_storage.save_metrics(metrics)
+                            logger.info("Saved metrics to history")
                 except Exception as e:
                     logger.error(f"Monitoring error: {e}")
                 time.sleep(interval)
