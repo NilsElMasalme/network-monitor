@@ -366,9 +366,8 @@ class NetworkMonitor:
                 (1 - len(successful_pings) / len(ping_results)) * 100, 1
             )
 
-        # If all pings failed, mark as disconnected
+        # If all pings failed, set 100% packet loss (but keep WiFi connected status from adapter)
         if len(successful_pings) == 0:
-            metrics.is_connected = False
             metrics.packet_loss_percent = 100.0
 
         if latencies:
@@ -399,13 +398,13 @@ class NetworkMonitor:
         """Calculate overall connection quality score (0-100)"""
         score = 100
 
-        # If not connected, score is 0
-        if not m.is_connected:
+        # If WiFi not connected AND no ping, score is 0
+        if not m.is_connected and m.ping_ms is None:
             return 0, "Disconnected"
 
-        # If ping failed completely, very low score
+        # If ping failed but WiFi shows connected, low score but not zero
         if m.ping_ms is None:
-            return 10, "No Response"
+            return 15, "No Response"
 
         # Ping penalty
         if m.ping_ms:
