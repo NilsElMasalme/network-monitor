@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WiFi Gaming Monitor</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <div class="logo">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
+                        <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
+                        <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+                        <circle cx="12" cy="20" r="1"/>
+                    </svg>
+                </div>
+                <div class="header-title">
+                    <h1>WiFi Gaming Monitor</h1>
+                    <span class="subtitle">Network Performance Diagnostics</span>
+                </div>
+            </div>
+            <div class="header-right">
+                <div id="connection-status" class="connection-status"
+                     hx-get="/partials/quality"
+                     hx-trigger="every 1s"
+                     hx-swap="innerHTML">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Connecting...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Quality Score Card -->
+            <section class="quality-section">
+                <div id="quality-display" class="quality-card"
+                     hx-get="/partials/quality"
+                     hx-trigger="every 1s"
+                     hx-swap="innerHTML">
+                    <div class="quality-score loading">--</div>
+                    <div class="quality-label">Quality Score</div>
+                </div>
+            </section>
+
+            <!-- Metric Cards -->
+            <section id="metrics-grid" class="metrics-grid"
+                     hx-get="/partials/metrics"
+                     hx-trigger="every 1s"
+                     hx-swap="innerHTML">
+                <!-- Metrics loaded via HTMX -->
+                <div class="metric-card loading">
+                    <div class="metric-label">Loading...</div>
+                </div>
+            </section>
+
+            <!-- Charts -->
+            <section class="charts-section">
+                <div class="chart-container">
+                    <h3>Latency & Jitter <span class="chart-timespan">(last 60s)</span></h3>
+                    <canvas id="latencyChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h3>Packet Loss <span class="chart-timespan">(last 60s)</span></h3>
+                    <canvas id="lossChart"></canvas>
+                </div>
+            </section>
+
+            <!-- Long-term History Section -->
+            <section class="history-section">
+                <div class="history-header">
+                    <h3>Long-term History</h3>
+                    <div class="period-selector">
+                        <button class="period-btn active" data-period="day">24 Hours</button>
+                        <button class="period-btn" data-period="week">7 Days</button>
+                        <button class="period-btn" data-period="month">30 Days</button>
+                    </div>
+                </div>
+
+                <div class="history-charts">
+                    <div class="chart-container history-chart">
+                        <h4>Ping & Jitter</h4>
+                        <canvas id="historyPingChart"></canvas>
+                    </div>
+                    <div class="chart-container history-chart">
+                        <h4>Quality Score</h4>
+                        <canvas id="historyQualityChart"></canvas>
+                    </div>
+                    <div class="chart-container history-chart">
+                        <h4>Packet Loss</h4>
+                        <canvas id="historyLossChart"></canvas>
+                    </div>
+                    <div class="chart-container history-chart">
+                        <h4>Signal Strength</h4>
+                        <canvas id="historySignalChart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Statistics & Events -->
+            <section class="bottom-section">
+                <div class="stats-card">
+                    <h3>Statistics (Last 60s)</h3>
+                    <div id="stats-content"
+                         hx-get="/partials/stats"
+                         hx-trigger="every 5s"
+                         hx-swap="innerHTML">
+                        <div class="loading">Loading statistics...</div>
+                    </div>
+                </div>
+
+                <div class="events-card">
+                    <h3>Event Log</h3>
+                    <div id="events-content"
+                         hx-get="/partials/events"
+                         hx-trigger="every 2s"
+                         hx-swap="innerHTML">
+                        <div class="loading">Loading events...</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Settings -->
+            <section class="settings-section">
+                <h3>Settings</h3>
+                <div class="settings-row">
+                    <label for="ping-target">Ping Target:</label>
+                    <select id="ping-target" onchange="updatePingTarget(this.value)">
+                        <option value="8.8.8.8">Google DNS (8.8.8.8)</option>
+                        <option value="1.1.1.1">Cloudflare DNS (1.1.1.1)</option>
+                        <option value="208.67.222.222">OpenDNS (208.67.222.222)</option>
+                    </select>
+                </div>
+                <div class="settings-row">
+                    <button class="btn btn-secondary" onclick="launchOverlay()">
+                        Launch Desktop Overlay
+                    </button>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <span>WiFi Gaming Monitor v1.0</span>
+            <span class="separator">|</span>
+            <span id="current-time"></span>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

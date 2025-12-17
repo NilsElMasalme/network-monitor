@@ -1,0 +1,5 @@
+<div class="quality-score {{ metrics.quality_status|lower }}">{{ metrics.quality_score }}</div>
+<div class="quality-label">{{ metrics.quality_status }}</div>
+<div class="quality-bar">
+    <div class="quality-fill {{ metrics.quality_status|lower }}" style="width: {{ metrics.quality_score }}%"></div>
+</div>

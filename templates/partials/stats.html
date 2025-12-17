@@ -1,0 +1,57 @@
+{% if stats and stats.ping %}
+<div class="stats-grid">
+    <div class="stat-group">
+        <h4>Ping</h4>
+        <div class="stat-row">
+            <span class="stat-label">Min</span>
+            <span class="stat-value">{{ stats.ping.min }}ms</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Avg</span>
+            <span class="stat-value">{{ stats.ping.avg }}ms</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Max</span>
+            <span class="stat-value">{{ stats.ping.max }}ms</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Std Dev</span>
+            <span class="stat-value">{{ stats.ping.std }}ms</span>
+        </div>
+    </div>
+
+    {% if stats.jitter %}
+    <div class="stat-group">
+        <h4>Jitter</h4>
+        <div class="stat-row">
+            <span class="stat-label">Min</span>
+            <span class="stat-value">{{ stats.jitter.min }}ms</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Avg</span>
+            <span class="stat-value">{{ stats.jitter.avg }}ms</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Max</span>
+            <span class="stat-value">{{ stats.jitter.max }}ms</span>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if stats.packet_loss %}
+    <div class="stat-group">
+        <h4>Packet Loss</h4>
+        <div class="stat-row">
+            <span class="stat-label">Average</span>
+            <span class="stat-value">{{ stats.packet_loss.total_percent }}%</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Spikes</span>
+            <span class="stat-value">{{ stats.packet_loss.spikes }}</span>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% else %}
+<div class="loading">Collecting data...</div>
+{% endif %}

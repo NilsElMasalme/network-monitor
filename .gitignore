@@ -1,0 +1,29 @@
+# Virtual environment
+venv/
+.venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+*.egg
+
+# Data files (optional - remove if you want to track history)
+# network_history.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Claude Code settings
+.claude/

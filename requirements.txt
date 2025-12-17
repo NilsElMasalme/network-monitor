@@ -1,0 +1,7 @@
+# WiFi Gaming Monitor - Dependencies
+
+# Web Framework
+flask>=2.0.0
+
+# System monitoring for throughput measurement
+psutil>=5.9.0

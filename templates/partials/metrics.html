@@ -1,0 +1,138 @@
+<!-- Ping Card -->
+<div class="metric-card {{ 'critical' if metrics.ping_ms and metrics.ping_ms > 100 else 'warning' if metrics.ping_ms and metrics.ping_ms > 50 else 'good' }}">
+    <div class="metric-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+        </svg>
+    </div>
+    <div class="metric-content">
+        <div class="metric-value">{{ "%.0f"|format(metrics.ping_ms) if metrics.ping_ms else '--' }}<span class="metric-unit">ms</span></div>
+        <div class="metric-label">Ping</div>
+        <div class="metric-range">
+            {% if metrics.ping_min_ms and metrics.ping_max_ms %}
+            min: {{ "%.0f"|format(metrics.ping_min_ms) }} / max: {{ "%.0f"|format(metrics.ping_max_ms) }}ms
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Jitter Card -->
+<div class="metric-card {{ 'critical' if metrics.jitter_ms and metrics.jitter_ms > 30 else 'warning' if metrics.jitter_ms and metrics.jitter_ms > 10 else 'good' }}">
+    <div class="metric-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+        </svg>
+    </div>
+    <div class="metric-content">
+        <div class="metric-value">{{ "%.1f"|format(metrics.jitter_ms) if metrics.jitter_ms else '--' }}<span class="metric-unit">ms</span></div>
+        <div class="metric-label">Jitter</div>
+        <div class="metric-sublabel">Latency variance - critical for gaming!</div>
+    </div>
+</div>
+
+<!-- Packet Loss Card -->
+<div class="metric-card {{ 'critical' if metrics.packet_loss_percent > 5 else 'warning' if metrics.packet_loss_percent > 1 else 'good' }}">
+    <div class="metric-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="2" width="20" height="20" rx="2"/>
+            <line x1="9" y1="9" x2="15" y2="15"/>
+            <line x1="15" y1="9" x2="9" y2="15"/>
+        </svg>
+    </div>
+    <div class="metric-content">
+        <div class="metric-value">{{ "%.1f"|format(metrics.packet_loss_percent) }}<span class="metric-unit">%</span></div>
+        <div class="metric-label">Packet Loss</div>
+        <div class="metric-range">
+            {{ metrics.packets_received }}/{{ metrics.packets_sent }} received
+        </div>
+    </div>
+</div>
+
+<!-- Signal Strength Card -->
+<div class="metric-card {{ 'critical' if metrics.signal_strength_dbm and metrics.signal_strength_dbm < -80 else 'warning' if metrics.signal_strength_dbm and metrics.signal_strength_dbm < -70 else 'good' }}">
+    <div class="metric-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
+            <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
+            <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+            <circle cx="12" cy="20" r="1"/>
+        </svg>
+    </div>
+    <div class="metric-content">
+        <div class="metric-value">{{ metrics.signal_percent if metrics.signal_percent else '--' }}<span class="metric-unit">%</span></div>
+        <div class="metric-label">Signal Strength</div>
+        <div class="metric-range">
+            {{ metrics.signal_strength_dbm if metrics.signal_strength_dbm else '--' }} dBm
+        </div>
+    </div>
+</div>
+
+<!-- Download Speed Card -->
+<div class="metric-card good">
+    <div class="metric-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+    </div>
+    <div class="metric-content">
+        <div class="metric-value">{{ "%.1f"|format(metrics.download_mbps) }}<span class="metric-unit">Mbit/s</span></div>
+        <div class="metric-label">Download</div>
+        <div class="metric-sublabel">Actual throughput</div>
+    </div>
+</div>
+
+<!-- Upload Speed Card -->
+<div class="metric-card good">
+    <div class="metric-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+    </div>
+    <div class="metric-content">
+        <div class="metric-value">{{ "%.1f"|format(metrics.upload_mbps) }}<span class="metric-unit">Mbit/s</span></div>
+        <div class="metric-label">Upload</div>
+        <div class="metric-sublabel">Actual throughput</div>
+    </div>
+</div>
+
+<!-- Link Speed Card -->
+<div class="metric-card info">
+    <div class="metric-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+        </svg>
+    </div>
+    <div class="metric-content">
+        <div class="metric-value">{{ "%.0f"|format(metrics.link_speed_mbps) if metrics.link_speed_mbps else '--' }}<span class="metric-unit">Mbps</span></div>
+        <div class="metric-label">Link Speed</div>
+        <div class="metric-sublabel">
+            {% if metrics.frequency_ghz %}
+            {{ metrics.frequency_ghz }}GHz
+            {% endif %}
+            {% if metrics.channel %}
+            | Ch {{ metrics.channel }}
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- SSID Card -->
+<div class="metric-card info">
+    <div class="metric-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2"/>
+            <line x1="8" y1="21" x2="16" y2="21"/>
+            <line x1="12" y1="17" x2="12" y2="21"/>
+        </svg>
+    </div>
+    <div class="metric-content">
+        <div class="metric-value ssid-value">{{ metrics.ssid if metrics.ssid else 'Not Connected' }}</div>
+        <div class="metric-label">Network</div>
+        <div class="metric-sublabel">{{ metrics.adapter_name if metrics.adapter_name else '' }}</div>
+    </div>
+</div>
